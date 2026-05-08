@@ -1,4 +1,4 @@
-# 📱 ChatNotes - WhatsApp-like Chat & Notes App
+# 📱 iChat - WhatsApp-like Chat & Notes App
 
 A modern, real-time chat and notes application with a clean WhatsApp-inspired UI. Built with React, Node.js, Express, and Firebase.
 

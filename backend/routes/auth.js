@@ -5,7 +5,7 @@ import { createHash, randomBytes, randomUUID } from 'crypto';
 import pool from '../config/db.js';
 
 const router = express.Router();
-const APP_NAME = process.env.APP_NAME || 'ChatNotes';
+const APP_NAME = process.env.APP_NAME || 'iChat';
 const APP_TAGLINE = process.env.APP_TAGLINE || 'Secure Real-time Chat App';
 
 const normalizeEmail = (email) => email.trim().toLowerCase();

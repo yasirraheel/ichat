@@ -89,7 +89,7 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/app-config', (req, res) => {
   res.json({
-    appName: process.env.APP_NAME || 'ChatNotes',
+    appName: process.env.APP_NAME || 'iChat',
     appTagline: process.env.APP_TAGLINE || 'Secure Real-time Chat App',
   });
 });

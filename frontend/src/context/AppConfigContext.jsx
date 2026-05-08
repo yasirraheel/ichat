@@ -2,14 +2,14 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import api from '../services/api';
 
 const AppConfigContext = createContext({
-  appName: 'ChatNotes',
+  appName: 'iChat',
   appTagline: 'Secure Real-time Chat App',
   loading: true,
 });
 
 export const AppConfigProvider = ({ children }) => {
   const [config, setConfig] = useState({
-    appName: 'ChatNotes',
+    appName: 'iChat',
     appTagline: 'Secure Real-time Chat App',
     loading: true,
   });
@@ -23,7 +23,7 @@ export const AppConfigProvider = ({ children }) => {
         if (!mounted) return;
 
         setConfig({
-          appName: data?.appName || 'ChatNotes',
+          appName: data?.appName || 'iChat',
           appTagline: data?.appTagline || 'Secure Real-time Chat App',
           loading: false,
         });
