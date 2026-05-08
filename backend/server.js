@@ -17,14 +17,27 @@ const PORT = process.env.PORT || 5000;
 const frontendOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    frontendOrigin,
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://ichat.shahabtech.com',
+  ],
+  credentials: true,
+}));
 app.use(express.json());
 
 // Create HTTP server for Socket.io
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: [frontendOrigin, 'http://localhost:3000', 'http://localhost:5173'],
+    origin: [
+      frontendOrigin,
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://ichat.shahabtech.com',
+    ],
     methods: ['GET', 'POST'],
   },
 });
@@ -588,6 +601,16 @@ io.on('connection', (socket) => {
     console.log('User disconnected:', socket.id);
   });
 });
+
+// Serve React frontend in production
+if (process.env.NODE_ENV === 'production') {
+  const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'dist');
+  app.use(express.static(frontendBuildPath));
+  // All non-API routes → React app
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendBuildPath, 'index.html'));
+  });
+}
 
 // Error handling middleware
 app.use((err, req, res, next) => {
