@@ -26,7 +26,8 @@ app.use(cors({
   ],
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Create HTTP server for Socket.io
 const server = http.createServer(app);
@@ -619,15 +620,19 @@ io.on('connection', (socket) => {
   });
 });
 
-// Serve React frontend in production
-if (process.env.NODE_ENV === 'production') {
-  const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'dist');
-  app.use(express.static(frontendBuildPath));
-  // All non-API routes → React app
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(frontendBuildPath, 'index.html'));
+// Serve React frontend (always — works in both dev and production on server)
+const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'dist');
+app.use(express.static(frontendBuildPath));
+// All non-API routes → React app
+app.get('*', (req, res) => {
+  const indexPath = path.join(frontendBuildPath, 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('Could not serve index.html:', err.message);
+      res.status(404).send('Frontend not found. Run: cd frontend && npm run build');
+    }
   });
-}
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
