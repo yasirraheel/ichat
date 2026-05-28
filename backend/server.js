@@ -163,6 +163,23 @@ app.get('/api/users/:uid/status', async (req, res) => {
   }
 });
 
+// Get a user's E2EE public key (safe to expose — public key is meant to be shared)
+app.get('/api/users/:uid/public-key', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT publicKey FROM users WHERE uid = ? LIMIT 1',
+      [req.params.uid]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ publicKey: rows[0].publicKey || null });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch public key' });
+  }
+});
+
+
 // Conversation Routes
 app.get('/api/conversations', async (req, res) => {
   const currentUid = String(req.query.uid || '').trim();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BsSend,
   BsTrash,
@@ -10,11 +10,20 @@ import {
   BsCheck2,
   BsCheck2All,
   BsX,
+  BsShieldLock,
 } from 'react-icons/bs';
 import { io } from 'socket.io-client';
 import { chatAPI, SOCKET_URL } from '../services/api';
 import { updateMyAvatar } from '../services/authService';
 import { useAppConfig } from '../context/AppConfigContext';
+import {
+  loadPrivateKey,
+  importPublicKey,
+  deriveSharedKey,
+  encryptMessage,
+  decryptMessage,
+  isEncrypted,
+} from '../services/cryptoService';
 import '../styles/ChatWindow.css';
 
 const ChatWindow = ({ user, userProfile, onLogout }) => {
@@ -37,6 +46,8 @@ const ChatWindow = ({ user, userProfile, onLogout }) => {
   const [searchError, setSearchError] = useState('');
   const [chatActionError, setChatActionError] = useState('');
   const [unreadCounts, setUnreadCounts] = useState({});
+  const [sharedKey, setSharedKey] = useState(null);  // AES-GCM key for current chat
+  const [e2eeReady, setE2eeReady] = useState(false);  // true when encryption is set up
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
   const selectedChatRef = useRef(null);
@@ -44,6 +55,7 @@ const ChatWindow = ({ user, userProfile, onLogout }) => {
   const selectedParticipantUidRef = useRef(null);
   const selectedChatIdRef = useRef(null);
   const avatarInputRef = useRef(null);
+  const sharedKeyRef = useRef(null); // keep sharedKey accessible inside socket callbacks
 
   const currentUid = userProfile?.uid || user;
   const currentSender = userProfile?.displayName || userProfile?.email || 'Unknown';
@@ -197,10 +209,18 @@ const ChatWindow = ({ user, userProfile, onLogout }) => {
       displayName: userProfile?.displayName || userProfile?.email,
     });
 
-    const onMessageReceived = ({ conversationId, message }) => {
+    const onMessageReceived = async ({ conversationId, message }) => {
       const normalizedConversationId = Number(conversationId);
       const isOwnMessage = String(message?.senderUid || '') === String(currentUid);
       const isActiveConversation = Number(selectedChatRef.current) === normalizedConversationId;
+
+      // Decrypt the incoming message text if possible
+      let displayText = message.text;
+      if (isEncrypted(message.text) && sharedKeyRef.current) {
+        const decrypted = await decryptMessage(sharedKeyRef.current, message.text);
+        displayText = decrypted ?? '🔒 Encrypted message';
+      }
+      const displayMessage = { ...message, text: displayText };
 
       setConversations((prev) => {
         const existingConversation = prev.find((c) => Number(c.id) === normalizedConversationId);
@@ -210,13 +230,13 @@ const ChatWindow = ({ user, userProfile, onLogout }) => {
 
         return prev.map((conv) =>
           Number(conv.id) === normalizedConversationId
-            ? { ...conv, lastMessage: message.text, timestamp: message.timestamp || new Date().toISOString() }
+            ? { ...conv, lastMessage: displayText, timestamp: message.timestamp || new Date().toISOString() }
             : conv
         );
       });
 
       if (isActiveConversation) {
-        setMessages((prev) => [...prev, message]);
+        setMessages((prev) => [...prev, displayMessage]);
 
         if (!isOwnMessage) {
           socketRef.current?.emit('message_delivered', {
@@ -270,6 +290,9 @@ const ChatWindow = ({ user, userProfile, onLogout }) => {
   useEffect(() => {
     if (!selectedChat) {
       setMessages([]);
+      setSharedKey(null);
+      setE2eeReady(false);
+      sharedKeyRef.current = null;
       return;
     }
 
@@ -278,7 +301,41 @@ const ChatWindow = ({ user, userProfile, onLogout }) => {
         setLoadingMessages(true);
         const { data } = await chatAPI.getConversation(selectedChat, currentUid);
         const loadedMessages = data?.messages || [];
-        setMessages(loadedMessages);
+
+        // ── E2EE: derive shared key for this conversation ──
+        let derivedKey = null;
+        try {
+          const participantUid = data?.participantUid && data.participantUid !== currentUid
+            ? data.participantUid
+            : data?.createdByUid;
+          if (participantUid && participantUid !== currentUid) {
+            const myPrivateKey = await loadPrivateKey(currentUid);
+            const { data: pkData } = await chatAPI.getUserPublicKey(participantUid);
+            if (myPrivateKey && pkData?.publicKey) {
+              const theirPublicKey = await importPublicKey(pkData.publicKey);
+              derivedKey = await deriveSharedKey(myPrivateKey, theirPublicKey);
+            }
+          }
+        } catch (keyErr) {
+          console.warn('E2EE key derivation failed:', keyErr.message);
+        }
+
+        sharedKeyRef.current = derivedKey;
+        setSharedKey(derivedKey);
+        setE2eeReady(!!derivedKey);
+
+        // ── Decrypt all loaded messages ──
+        const decryptedMessages = await Promise.all(
+          loadedMessages.map(async (msg) => {
+            if (derivedKey && isEncrypted(msg.text)) {
+              const plain = await decryptMessage(derivedKey, msg.text);
+              return { ...msg, text: plain ?? '🔒 Encrypted message' };
+            }
+            return msg;
+          })
+        );
+
+        setMessages(decryptedMessages);
 
         const hasIncoming = loadedMessages.some(
           (m) => String(m.senderUid || '') !== String(currentUid)
@@ -439,10 +496,15 @@ const ChatWindow = ({ user, userProfile, onLogout }) => {
     if (!trimmedText || !selectedChat) return;
 
     try {
+      // Encrypt before sending if E2EE key is available
+      let textToSend = trimmedText;
+      if (sharedKeyRef.current) {
+        textToSend = await encryptMessage(sharedKeyRef.current, trimmedText);
+      }
       await chatAPI.sendMessage(
         selectedChat,
         currentSender,
-        trimmedText,
+        textToSend,
         currentUid
       );
       setInputText('');
@@ -697,6 +759,11 @@ const ChatWindow = ({ user, userProfile, onLogout }) => {
                 <h3>{selectedConversation?.name}</h3>
                 <span className="online-status">{formatPresence(participantStatus)}</span>
               </div>
+              {e2eeReady && (
+                <span className="e2ee-badge" title="End-to-end encrypted">
+                  <BsShieldLock /> Encrypted
+                </span>
+              )}
               <div className="chat-header-actions">
                 <button
                   className="leave-chat-btn"

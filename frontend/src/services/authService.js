@@ -1,4 +1,11 @@
 import api from './api';
+import {
+  generateKeyPair,
+  exportPublicKey,
+  savePrivateKey,
+  loadPrivateKey,
+  deletePrivateKey,
+} from './cryptoService';
 
 const SESSION_KEY = 'chatnotes_session';
 const USERS_KEY = 'chatnotes_users';
@@ -40,12 +47,20 @@ const clearSession = () => {
 // User registration with email and password
 export const registerUser = async (email, password, displayName, avatarUrl = null) => {
   try {
+    // Generate E2EE key pair before registering
+    const keyPair = await generateKeyPair();
+    const publicKeyB64 = await exportPublicKey(keyPair.publicKey);
+
     const { data } = await api.post('/api/auth/register', {
       email,
       password,
       displayName,
       avatarUrl,
+      publicKey: publicKeyB64,
     });
+
+    // Store private key locally (never sent to server)
+    await savePrivateKey(data.user.uid, keyPair.privateKey);
 
     return data.user;
   } catch (error) {
@@ -60,6 +75,25 @@ export const loginUser = async (email, password) => {
     const { data } = await api.post('/api/auth/login', { email, password });
 
     saveSession({ token: data.token, user: data.user });
+
+    // Check if private key exists for this device; if not, generate new pair
+    const existingKey = await loadPrivateKey(data.user.uid);
+    if (!existingKey) {
+      try {
+        const keyPair = await generateKeyPair();
+        const publicKeyB64 = await exportPublicKey(keyPair.publicKey);
+        await savePrivateKey(data.user.uid, keyPair.privateKey);
+        // Upload new public key to server
+        await api.post(
+          '/api/auth/upload-public-key',
+          { publicKey: publicKeyB64 },
+          { headers: { Authorization: `Bearer ${data.token}` } }
+        );
+      } catch (keyErr) {
+        console.warn('E2EE key setup failed:', keyErr.message);
+      }
+    }
+
     return data.user;
   } catch (error) {
     const responseData = error.response?.data;
@@ -81,8 +115,10 @@ export const resetPassword = async (email) => {
 };
 
 // Sign out user
-export const logoutUser = async () => {
+export const logoutUser = async (uid = null) => {
   clearSession();
+  // Note: we intentionally keep the private key in IndexedDB on logout
+  // so the user can still read old messages when they log back in on this device.
   return true;
 };
 

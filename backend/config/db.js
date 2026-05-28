@@ -65,6 +65,7 @@ export const initDB = async () => {
     await ensureColumn('users', 'isOnline', 'isOnline BOOLEAN DEFAULT FALSE');
     await ensureColumn('users', 'lastSeenAt', 'lastSeenAt DATETIME NULL');
     await ensureColumn('users', 'avatarUrl', 'avatarUrl LONGTEXT NULL');
+    await ensureColumn('users', 'publicKey', 'publicKey TEXT NULL');
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sessions (

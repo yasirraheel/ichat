@@ -24,6 +24,7 @@ export const chatAPI = {
     api.post(`/api/conversations/${conversationId}/seen`, { uid }),
   sendMessage: (conversationId, sender, text, senderUid) =>
     api.post(`/api/conversations/${conversationId}/messages`, { sender, text, senderUid }),
+  getUserPublicKey: (uid) => api.get(`/api/users/${uid}/public-key`),
 };
 
 // Health check

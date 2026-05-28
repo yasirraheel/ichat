@@ -440,6 +440,27 @@
   font-size: 0.76rem;
 }
 
+.e2ee-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, #00a884, #0d8f6e);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  margin-left: 4px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 3px rgba(0, 168, 132, 0.3);
+}
+
+.e2ee-badge svg {
+  font-size: 0.78rem;
+}
+
+
 .delete-chat-header-btn,
 .chat-menu-btn {
   margin-left: 0;

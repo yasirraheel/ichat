@@ -54,7 +54,7 @@ router.post(
     }
 
     const email = normalizeEmail(req.body.email);
-    const { password, displayName, avatarUrl } = req.body;
+    const { password, displayName, avatarUrl, publicKey } = req.body;
 
     try {
       const [existingUsers] = await pool.query('SELECT email FROM users WHERE email = ?', [email]);
@@ -67,8 +67,8 @@ router.post(
       const isVerified = false;
 
       await pool.query(
-        'INSERT INTO users (uid, email, displayName, passwordHash, avatarUrl, isVerified) VALUES (?, ?, ?, ?, ?, ?)',
-        [uid, email, displayName.trim(), pHash, avatarUrl || null, isVerified]
+        'INSERT INTO users (uid, email, displayName, passwordHash, avatarUrl, isVerified, publicKey) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [uid, email, displayName.trim(), pHash, avatarUrl || null, isVerified, publicKey || null]
       );
 
       res.json({
@@ -453,5 +453,32 @@ router.post(
     }
   }
 );
+
+// Upload / update public key for E2EE
+router.post('/upload-public-key', async (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const { publicKey } = req.body || {};
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  if (!publicKey || typeof publicKey !== 'string') {
+    return res.status(400).json({ success: false, message: 'publicKey is required' });
+  }
+
+  try {
+    const [sessions] = await pool.query('SELECT email FROM sessions WHERE token = ?', [token]);
+    if (sessions.length === 0) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    const email = sessions[0].email;
+    await pool.query('UPDATE users SET publicKey = ? WHERE email = ?', [publicKey, email]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Upload public key error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
 
 export default router;
